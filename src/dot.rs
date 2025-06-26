@@ -6,22 +6,18 @@ use std::fs::File;
 use std::io::Write;
 use std::process::Command;
 
-/// Render the target dependency graph to a DOT string
+/// Render the target dependency graph to a DOT string.
 pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> String {
     let mut out = String::new();
     writeln!(&mut out, "digraph gnumake {{").unwrap();
     writeln!(&mut out, "    node[shape=rect;style=\"rounded,bold\"]; {{").unwrap();
 
-    // 1) Build colour map for all targets.
     let mut colours = build_colour_map(data);
-
-    // 2) Discover threads between targets.
     let (threads, thread_vertices) = compute_threads(&data.tgt_deps, &data.goal);
 
-    // 3) Emit threads, pruning per `maxthreads`, honoring `nodraw` patterns.
     for (start, ends) in &threads {
         for (end, distmap) in ends {
-            for (&distance, thread_list) in distmap.iter().rev() { // longest first
+            for (&distance, thread_list) in distmap.iter().rev() {
                 let mut keep = Vec::new();
                 let mut prune = Vec::new();
                 for t in thread_list {
@@ -34,9 +30,7 @@ pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> 
                 let allowed = maxthreads.saturating_sub(keep.len());
                 if prune.len() > allowed && allowed > 0 {
                     let summary = format!(
-                        "[{} -> {} ({} hops)]
-{},{}...
-{} items]",
+                        "[{} -> {} ({} hops)]\\n{},{}...\\n{} items]",
                         start,
                         end,
                         distance - 2,
@@ -48,9 +42,7 @@ pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> 
                     prune.truncate(allowed - 1);
                     prune.push(vec![start.clone(), summary.clone(), end.clone()]);
                 }
-                for t in keep.into_iter().chain(prune.into_iter()) {
-                    emit_thread(&mut out, &t, &mut colours, nodraw);
-                }
+                 for t in keep.into_iter().chain(prune.into_iter()) { emit_thread(&mut out, &t, &mut colours, nodraw); }
             }
         }
     }
@@ -75,39 +67,14 @@ pub fn render_variables(data: &MakeData) -> String {
 }
 
 /// Write the DOT string to a file
-pub fn write_dot(path: &str, dot: &str) -> std::io::Result<()> {
-    let mut file = File::create(path)?;
-    file.write_all(dot.as_bytes())
-}
+pub fn write_dot(path: &str, dot: &str) -> std::io::Result<()> { let mut file = File::create(path)?; file.write_all(dot.as_bytes()) }
 
 /// Invoke Graphviz `dot` to produce a PNG
-pub fn render_png(dot_path: &str) -> std::io::Result<()> {
-    let png_path = dot_path.replace(".dot", ".png");
-    Command::new("dot")
-        .arg("-Tpng")
-        .arg(dot_path)
-        .arg("-o")
-        .arg(png_path)
-        .status()?;
-    Ok(())
-}
+pub fn render_png(dot_path: &str) -> std::io::Result<()> { let png_path = dot_path.replace(".dot", ".png"); Command::new("dot").arg("-Tpng").arg(dot_path).arg("-o").arg(png_path).status()?; Ok(()) }
 
 // Helpers for targets graph
 
-fn build_colour_map(data: &MakeData) -> BTreeMap<String,String> {
-    let mut m = BTreeMap::new();
-    m.insert(data.goal.clone(), "color=red".into());
-    for tgt in data.tgt_deps.keys() {
-        if m.contains_key(tgt) { continue; }
-        let style = if data.tgt_deps.get(tgt).map_or(true, |v| v.is_empty()) {
-            "color=green"
-        } else {
-            "color=orange"
-        };
-        m.insert(tgt.clone(), style.into());
-    }
-    m
-}
+fn build_colour_map(data: &MakeData) -> BTreeMap<String,String> { let mut m = BTreeMap::new(); m.insert(data.goal.clone(), "color=red".into()); for tgt in data.tgt_deps.keys() { if m.contains_key(tgt) { continue; } let style = if data.tgt_deps.get(tgt).map_or(true, |v| v.is_empty()) { "color=green" } else { "color=orange" }; m.insert(tgt.clone(), style.into()); } m }
 
 fn compute_threads(
     graph: &std::collections::HashMap<String, Vec<String>>,
@@ -125,7 +92,7 @@ fn compute_threads(
         threads: &mut BTreeMap<String, BTreeMap<String, BTreeMap<usize, Vec<Vec<String>>>>>,
         tv: &mut BTreeMap<String, usize>,
     ) {
-        let endpoint = graph.get(node).map_or(true, |d| d.is_empty()) || tv.is_empty();
+        let endpoint = graph.get(node).map_or(true, |d| d.is_empty());
         if endpoint {
             let mut s = stack.clone();
             s.push(node.clone());
@@ -154,47 +121,18 @@ fn compute_threads(
     (threads, tv)
 }
 
-fn contains_endpoint(thread: &[String], tv: &BTreeMap<String, usize>) -> bool {
-    for v in thread.iter().skip(1).take(thread.len().saturating_sub(2)) {
-        if tv.get(v).cloned().unwrap_or(0) > 1 {
-            return true;
-        }
-    }
-    false
-}
+fn contains_endpoint(thread: &[String], tv: &BTreeMap<String, usize>) -> bool { for v in thread.iter().skip(1).take(thread.len().saturating_sub(2)) { if tv.get(v).cloned().unwrap_or(0) > 1 { return true; } } false }
 
 fn emit_thread(
     out: &mut String,
     thread: &[String],
     colours: &mut BTreeMap<String,String>,
     nodraw: &[String],
-) {
-    for node in thread {
-        if nodraw.iter().any(|pat| node.contains(pat)) { return; }
-        if let Some(col) = colours.remove(node) {
-            writeln!(out, "    \"{}\" [ {} ];", node, col).unwrap();
-        }
-    }
-    for win in thread.windows(2) {
-        writeln!(out, "    \"{}\" -> \"{}\";", win[0], win[1]).unwrap();
-    }
-}
-
-// Helpers for variables graph
+) { for node in thread { if nodraw.iter().any(|pat| node.contains(pat)) { return; } if let Some(col) = colours.remove(node) { writeln!(out, "    \"{}\" [ {} ];", node, col).unwrap(); } } for win in thread.windows(2) { writeln!(out, "    \"{}\" -> \"{}\";", win[0], win[1]).unwrap(); } }
 
 fn print_vars(
     out: &mut String,
     var_deps: &std::collections::HashMap<String, Vec<String>>,
     target: &str,
     seen: &mut BTreeSet<String>,
-) {
-    if let Some(vars) = var_deps.get(target) {
-        for var in vars {
-            let edge = format!("\"{}\" -> \"{}\";", var, target);
-            if seen.insert(edge.clone()) {
-                writeln!(out, "    {}", edge).unwrap();
-                print_vars(out, var_deps, var, seen);
-            }
-        }
-    }
-}
+) { if let Some(vars) = var_deps.get(target) { for var in vars { let edge = format!("\"{}\" -> \"{}\";", var, target); if seen.insert(edge.clone()) { writeln!(out, "    {}", edge).unwrap(); print_vars(out, var_deps, var, seen); } } } }

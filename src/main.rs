@@ -11,35 +11,20 @@ mod dot;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Generate dependency graphs from a GNU make database")]
 struct Args {
-    /// Print targets graph
     #[arg(long, conflicts_with = "variables")]
     targets: bool,
-
-    /// Print variables graph
     #[arg(long, conflicts_with = "targets")]
     variables: bool,
-
-    /// Maximum threads to render
     #[arg(long, default_value_t = 3)]
     maxthreads: usize,
-
-    /// Rewrite patterns
     #[arg(long)]
     rewrite: Vec<String>,
-
-    /// Suppress drawing of nodes matching pattern
     #[arg(long)]
     nodraw: Vec<String>,
-
-    /// Also output PNG (requires 'dot' on PATH)
     #[arg(long)]
     png: bool,
-
-    /// Enable debug tracing / JSON output
     #[arg(long)]
     debug: bool,
-
-    /// Path to gnumake.db (use '-' for stdin)
     #[arg(value_name = "GNUMAKE_DB")]
     db_path: String,
 }
@@ -51,7 +36,6 @@ fn main() -> Result<()> {
     }
     let data = parser::parse_db(&args.db_path)?;
     if args.debug {
-        // Print structured JSON of entire MakeData
         let json = serde_json::to_string_pretty(&data)?;
         println!("{}", json);
     }
@@ -69,6 +53,7 @@ fn main() -> Result<()> {
             dot::render_png(&format!("{}.targets.dot", data.goal))?;
         }
     }
+
     if args.variables {
         if args.debug {
             eprintln!("DEBUG: rendering variables graph");
