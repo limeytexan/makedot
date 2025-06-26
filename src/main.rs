@@ -1,6 +1,7 @@
 // src/main.rs
 use anyhow::Result;
 use clap::Parser;
+use serde_json;
 
 mod parser;
 mod graph;
@@ -34,6 +35,10 @@ struct Args {
     #[arg(long)]
     png: bool,
 
+    /// Enable debug tracing / JSON output
+    #[arg(long)]
+    debug: bool,
+
     /// Path to gnumake.db (use '-' for stdin)
     #[arg(value_name = "GNUMAKE_DB")]
     db_path: String,
@@ -41,18 +46,38 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.debug {
+        eprintln!("DEBUG: reading make DB from '{}'", args.db_path);
+    }
     let data = parser::parse_db(&args.db_path)?;
+    if args.debug {
+        // Print structured JSON of entire MakeData
+        let json = serde_json::to_string_pretty(&data)?;
+        println!("{}", json);
+    }
 
     if args.targets {
-        let dot = dot::render_targets(&data, args.maxthreads, &args.nodraw);
-        dot::write_dot(&format!("{}.targets.dot", data.goal), &dot)?;
+        if args.debug {
+            eprintln!("DEBUG: rendering targets graph (maxthreads={}, nodraw={:?})", args.maxthreads, args.nodraw);
+        }
+        let dot_targets = dot::render_targets(&data, args.maxthreads, &args.nodraw);
+        if args.debug {
+            println!("--- TARGET GRAPH DOT ---\n{}", dot_targets);
+        }
+        dot::write_dot(&format!("{}.targets.dot", data.goal), &dot_targets)?;
         if args.png {
             dot::render_png(&format!("{}.targets.dot", data.goal))?;
         }
     }
     if args.variables {
-        let dot = dot::render_variables(&data);
-        dot::write_dot(&format!("{}.variables.dot", data.goal), &dot)?;
+        if args.debug {
+            eprintln!("DEBUG: rendering variables graph");
+        }
+        let dot_vars = dot::render_variables(&data);
+        if args.debug {
+            println!("--- VARIABLE GRAPH DOT ---\n{}", dot_vars);
+        }
+        dot::write_dot(&format!("{}.variables.dot", data.goal), &dot_vars)?;
         if args.png {
             dot::render_png(&format!("{}.variables.dot", data.goal))?;
         }

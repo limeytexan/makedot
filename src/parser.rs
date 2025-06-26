@@ -4,6 +4,7 @@
 use anyhow::{Context, Result};
 use pest_derive::Parser;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}};
 
 #[derive(Parser)]
@@ -11,6 +12,7 @@ use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}};
 struct MkdbParser;
 
 /// Represents the parsed make database
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MakeData {
     pub goal: String,
     pub tgt_deps: HashMap<String, Vec<String>>,
