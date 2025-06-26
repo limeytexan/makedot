@@ -1,0 +1,14 @@
+version = 1
+
+[install]
+cargo.pkg-path = "cargo"
+rustc.pkg-path = "rustc"
+clang.pkg-path = "clang"
+
+[build.makedot-rs]
+sandbox = "off"
+command = """
+  cargo build --release
+  mkdir -p $out/bin
+  cp target/release/makedot-rs $out/bin
+"""

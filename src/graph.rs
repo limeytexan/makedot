@@ -1,28 +1,37 @@
-use petgraph::graphmap::DiGraphMap;
+// src/graph.rs
+use petgraph::Graph;
+use petgraph::Directed;
 use std::collections::HashMap;
 
 /// Build the target dependency graph from parsed data
-pub fn build_target_graph(tgt_deps: &HashMap<String, Vec<String>>) -> DiGraphMap<String, ()> {
-    let mut graph = DiGraphMap::new();
+pub fn build_target_graph(tgt_deps: &HashMap<String, Vec<String>>) -> Graph<String, (), Directed> {
+    let mut graph = Graph::new();
+    let mut indices = HashMap::new();
     for (target, deps) in tgt_deps {
-        graph.add_node(target.clone());
+        let ti = *indices.entry(target.clone())
+            .or_insert_with(|| graph.add_node(target.clone()));
         for dep in deps {
-            graph.add_node(dep.clone());
-            graph.add_edge(dep.clone(), target.clone(), ());
+            let di = *indices.entry(dep.clone())
+                .or_insert_with(|| graph.add_node(dep.clone()));
+            graph.add_edge(di, ti, ());
         }
     }
     graph
 }
 
 /// Build the variable dependency graph from parsed data
-pub fn build_var_graph(var_deps: &HashMap<String, Vec<String>>) -> DiGraphMap<String, ()> {
-    let mut graph = DiGraphMap::new();
+pub fn build_var_graph(var_deps: &HashMap<String, Vec<String>>) -> Graph<String, (), Directed> {
+    let mut graph = Graph::new();
+    let mut indices = HashMap::new();
     for (tgt, vars) in var_deps {
-        graph.add_node(tgt.clone());
+        let ti = *indices.entry(tgt.clone())
+            .or_insert_with(|| graph.add_node(tgt.clone()));
         for var in vars {
-            graph.add_node(var.clone());
-            graph.add_edge(var.clone(), tgt.clone(), ());
+            let vi = *indices.entry(var.clone())
+                .or_insert_with(|| graph.add_node(var.clone()));
+            graph.add_edge(vi, ti, ());
         }
     }
     graph
 }
+

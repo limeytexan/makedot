@@ -1,5 +1,8 @@
+// src/parser.rs
+#![allow(dead_code)]
+#![allow(unused_imports)]
 use anyhow::{Context, Result};
-use pest::Parser;
+use pest_derive::Parser;
 use std::{collections::HashMap, fs::File, io::Read};
 
 #[derive(Parser)]
@@ -11,6 +14,7 @@ pub struct MakeData {
     pub goal: String,
     pub tgt_deps: HashMap<String, Vec<String>>,
     pub var_deps: HashMap<String, Vec<String>>,
+    #[allow(dead_code)]
     pub values: HashMap<String, (String, usize, String)>, // var -> (file, line, val)
 }
 
