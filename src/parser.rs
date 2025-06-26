@@ -4,7 +4,11 @@ use anyhow::{Context, Result};
 use pest_derive::Parser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::{HashMap, HashSet}, fs::File, io::{BufRead, BufReader}};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::File,
+    io::{BufRead, BufReader},
+};
 
 #[derive(Parser)]
 #[grammar = "mkdb.pest"]
@@ -30,7 +34,11 @@ fn scanstring_for_targets(input: &str) -> Vec<String> {
     for ch in input.chars() {
         match ch {
             '|' => break,
-            '=' => { retval.pop(); accum.clear(); break; },
+            '=' => {
+                retval.pop();
+                accum.clear();
+                break;
+            }
             '"' | '\'' => in_quotes = !in_quotes,
             ' ' if !in_quotes => {
                 if !accum.is_empty() {
@@ -50,8 +58,7 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
     let mut reader: Box<dyn BufRead> = if path == "-" {
         Box::new(BufReader::new(std::io::stdin()))
     } else {
-        let f = File::open(path)
-            .with_context(|| format!("opening make database at {}", path))?;
+        let f = File::open(path).with_context(|| format!("opening make database at {}", path))?;
         Box::new(BufReader::new(f))
     };
 
@@ -83,10 +90,14 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
             let deps: Vec<String> = scanstring_for_targets(&cap[2]);
             match tgt.as_str() {
                 ".PHONY" => {
-                    for d in deps { phony_targets.insert(d); }
+                    for d in deps {
+                        phony_targets.insert(d);
+                    }
                 }
                 ".INTERMEDIATE" => {
-                    for d in deps { intermediate_targets.insert(d); }
+                    for d in deps {
+                        intermediate_targets.insert(d);
+                    }
                 }
                 _ => {
                     tgt_deps.entry(tgt.clone()).or_default().extend(deps);
@@ -120,5 +131,12 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
     } else {
         default_goal
     };
-    Ok(MakeData { goal, tgt_deps, var_deps, phony_targets, intermediate_targets, values })
+    Ok(MakeData {
+        goal,
+        tgt_deps,
+        var_deps,
+        phony_targets,
+        intermediate_targets,
+        values,
+    })
 }

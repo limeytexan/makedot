@@ -1,17 +1,21 @@
 // src/main.rs
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use clap::Parser;
 use serde_json;
 use std::env;
 use std::fs;
 
-mod parser;
-mod graph;
 mod dot;
+mod graph;
+mod parser;
 
 /// Command-line arguments
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Generate dependency graphs from a GNU make database")]
+#[command(
+    author,
+    version,
+    about = "Generate dependency graphs from a GNU make database"
+)]
 struct Args {
     #[arg(long, conflicts_with = "variables")]
     targets: bool,
@@ -44,7 +48,10 @@ fn main() -> Result<()> {
 
     if args.targets {
         if args.debug {
-            eprintln!("DEBUG: rendering targets graph (maxthreads={}, nodraw={:?})", args.maxthreads, args.nodraw);
+            eprintln!(
+                "DEBUG: rendering targets graph (maxthreads={}, nodraw={:?})",
+                args.maxthreads, args.nodraw
+            );
         }
         let dot_targets = dot::render_targets(&data, args.maxthreads, &args.nodraw);
         if args.debug {
@@ -86,8 +93,8 @@ fn main() -> Result<()> {
 /// environment vars and Makefile values.
 fn rewrite_file(path: &str, data: &parser::MakeData, rewrites: &[String]) -> Result<()> {
     // Read original
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("reading file for rewrite: {}", path))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("reading file for rewrite: {}", path))?;
 
     // Apply do_rewrites to each line
     let mut out = String::with_capacity(content.len());
@@ -121,9 +128,7 @@ fn do_rewrites(line: &str, data: &parser::MakeData, rewrites: &[String]) -> Stri
     let mut var_table: Vec<(&String, &String)> = data
         .values
         .iter()
-        .filter(|(varname, _)| {
-            rewrites.iter().any(|suf| varname.ends_with(suf))
-        })
+        .filter(|(varname, _)| rewrites.iter().any(|suf| varname.ends_with(suf)))
         .map(|(varname, (_file, _lineno, val))| (val, varname))
         .collect();
 
@@ -139,4 +144,3 @@ fn do_rewrites(line: &str, data: &parser::MakeData, rewrites: &[String]) -> Stri
 
     result
 }
-

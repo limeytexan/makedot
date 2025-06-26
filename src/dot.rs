@@ -7,11 +7,7 @@ use std::io::Write;
 use std::process::Command;
 
 /// Render the "targets" graph.
-pub fn render_targets(
-    data: &MakeData,
-    maxthreads: usize,
-    nodraw: &[String],
-) -> String {
+pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> String {
     let mut out = String::new();
     writeln!(&mut out, "digraph gnumake {{").unwrap();
     writeln!(&mut out, "    node[shape=rect;style=\"rounded,bold\"]; {{").unwrap();
@@ -54,21 +50,19 @@ pub fn render_targets(
                     prune.push(vec![start.clone(), summary.clone(), end.clone()]);
                 }
                 for th in keep.into_iter().chain(prune.into_iter()) {
-                    emit_thread(
-                        &mut out,
-                        &th,
-                        &mut colours,
-                        nodraw,
-                        &mut seen_edges,
-                    );
+                    emit_thread(&mut out, &th, &mut colours, nodraw, &mut seen_edges);
                 }
             }
         }
     }
 
     writeln!(&mut out, "    }}").unwrap();
-    writeln!(&mut out, "}}
-").unwrap();
+    writeln!(
+        &mut out,
+        "}}
+"
+    )
+    .unwrap();
     out
 }
 
@@ -82,8 +76,12 @@ pub fn render_variables(data: &MakeData) -> String {
     print_vars(&mut out, &data.var_deps, &data.goal, &mut seen);
 
     writeln!(&mut out, "    }}").unwrap();
-    writeln!(&mut out, "}}
-").unwrap();
+    writeln!(
+        &mut out,
+        "}}
+"
+    )
+    .unwrap();
     out
 }
 
@@ -239,4 +237,3 @@ fn print_vars(
         }
     }
 }
-
