@@ -21,6 +21,31 @@ pub struct MakeData {
     pub values: HashMap<String, (String, usize, String)>,
 }
 
+/// Scan a Makefile prerequisite string for target tokens by scanning the
+/// string for targets (stop at `|`, drop the token before `=` and return).
+fn scanstring_for_targets(input: &str) -> Vec<String> {
+    let mut retval = Vec::new();
+    let mut accum = String::new();
+    let mut in_quotes = false;
+    for ch in input.chars() {
+        match ch {
+            '|' => break,
+            '=' => { retval.pop(); accum.clear(); break; },
+            '"' | '\'' => in_quotes = !in_quotes,
+            ' ' if !in_quotes => {
+                if !accum.is_empty() {
+                    retval.push(std::mem::take(&mut accum));
+                }
+            }
+            c => accum.push(c),
+        }
+    }
+    if !accum.is_empty() {
+        retval.push(accum);
+    }
+    retval
+}
+
 pub fn parse_db(path: &str) -> Result<MakeData> {
     let mut reader: Box<dyn BufRead> = if path == "-" {
         Box::new(BufReader::new(std::io::stdin()))
@@ -55,7 +80,7 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
         }
         if let Some(cap) = target_line_re.captures(&line) {
             let tgt = cap[1].to_string();
-            let deps: Vec<String> = cap[2].split_whitespace().map(String::from).collect();
+            let deps: Vec<String> = scanstring_for_targets(&cap[2]);
             match tgt.as_str() {
                 ".PHONY" => {
                     for d in deps { phony_targets.insert(d); }
