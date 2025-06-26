@@ -109,8 +109,13 @@ pub fn render_png(dot_path: &str) -> std::io::Result<()> {
 
 fn build_colour_map(data: &MakeData) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
-    // goal always red
-    m.insert(data.goal.clone(), "color=red".into());
+    // goal always red, but filling based on whether it's phony
+    let goal_style = if data.phony_targets.contains(&data.goal) {
+        "color=red,style=\"rounded,filled\""
+    } else {
+        "color=red"
+    };
+    m.insert(data.goal.clone(), goal_style.into());
 
     for tgt in data.tgt_deps.keys() {
         if m.contains_key(tgt) {
