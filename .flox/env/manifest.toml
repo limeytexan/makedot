@@ -1,0 +1,26 @@
+version = 1
+
+[install]
+cargo.pkg-path = "cargo"
+clang.pkg-path = "clang"
+dasel.pkg-path = "dasel"
+gnumake.pkg-path = "gnumake"
+graphviz.pkg-path = "graphviz"
+rustc.pkg-path = "rustc"
+rustfmt.pkg-path = "rustfmt"
+
+[build.makedot]
+sandbox = "off"
+version.command = "dasel -f Cargo.toml package.version | tr -d \"'\""
+command = """
+  cargo build --release
+  mkdir -p $out/bin $out/libexec
+  cp target/release/makedot $out/libexec
+  # Create link to gnumake from libexec
+  ln -s $(realpath $(which make)) $out/libexec/make
+  # Create make wrapper script
+  cp src/make.bash $out/bin/make
+  sed -i "s%@out@%$out%g" $out/bin/make
+  chmod +x $out/bin/make
+"""
+runtime-packages = [ "gnumake", "graphviz" ]

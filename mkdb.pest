@@ -1,0 +1,4 @@
+// mkdb.pest
+// Minimal grammar stub to satisfy `#[grammar = "mkdb.pest"]`
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+file = { ANY* }
