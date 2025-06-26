@@ -4,6 +4,7 @@ version = 1
 cargo.pkg-path = "cargo"
 rustc.pkg-path = "rustc"
 clang.pkg-path = "clang"
+graphviz.pkg-path = "graphviz"
 
 [build.makedot-rs]
 sandbox = "off"
