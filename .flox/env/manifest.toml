@@ -4,13 +4,19 @@ version = 1
 cargo.pkg-path = "cargo"
 rustc.pkg-path = "rustc"
 clang.pkg-path = "clang"
+gnumake.pkg-path = "gnumake"
 graphviz.pkg-path = "graphviz"
 
-[build.makedot-rs]
+[build.makedot]
 sandbox = "off"
 command = """
   cargo build --release
-  mkdir -p $out/bin
-  cp target/release/makedot-rs $out/bin
+  mkdir -p $out/bin $out/libexec
+  cp target/release/makedot $out/libexec
+  # Create link to gnumake from libexec
+  ln -s $(realpath $(which make)) $out/libexec/make
+  # Create make wrapper script
+  cp src/make.bash $out/bin/make
+  chmod +x $out/bin/make
 """
-runtime-packages = [ "graphviz" ]
+runtime-packages = [ "gnumake", "graphviz" ]
