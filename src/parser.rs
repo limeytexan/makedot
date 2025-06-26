@@ -16,6 +16,10 @@ pub struct MakeData {
     pub goal: String,
     pub tgt_deps: HashMap<String, Vec<String>>,
     pub var_deps: HashMap<String, Vec<String>>,
+    /// Targets declared in .PHONY stanzas
+    pub phony_targets: HashSet<String>,
+    /// Targets declared in .INTERMEDIATE stanzas
+    pub intermediate_targets: HashSet<String>,
     #[allow(dead_code)]
     pub values: HashMap<String, (String, usize, String)>,
 }
@@ -53,7 +57,14 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
         if let Some(cap) = target_line_re.captures(&line) {
             let tgt = cap[1].to_string();
             let deps: Vec<String> = cap[2].split_whitespace().map(String::from).collect();
-            tgt_deps.entry(tgt.clone()).or_default().extend(deps);
+            // Record special targets or normal dependencies
+            if tgt == ".PHONY" {
+                for d in deps { phony_targets.insert(d); }
+            } else if tgt == ".INTERMEDIATE" {
+                for d in deps { intermediate_targets.insert(d); }
+            } else {
+                tgt_deps.entry(tgt.clone()).or_default().extend(deps);
+            }
             buffer.clear();
             continue;
         }
