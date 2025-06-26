@@ -25,7 +25,7 @@
     "options": {},
     "build": {
       "makedot": {
-        "command": "  cargo build --release\n  mkdir -p $out/bin $out/libexec\n  cp target/release/makedot $out/libexec\n  # Create link to gnumake from libexec\n  ln -s $(realpath $(which make)) $out/libexec/make\n  # Create make wrapper script\n  cp src/make.bash $out/bin/make\n  chmod +x $out/bin/make\n",
+        "command": "  cargo build --release\n  mkdir -p $out/bin $out/libexec\n  cp target/release/makedot $out/libexec\n  # Create link to gnumake from libexec\n  ln -s $(realpath $(which make)) $out/libexec/make\n  # Create make wrapper script\n  cp src/make.bash $out/bin/make\n  sed -i \"s%@out@%$out%g\" $out/bin/make\n  chmod +x $out/bin/make\n",
         "runtime-packages": [
           "gnumake",
           "graphviz"

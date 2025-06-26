@@ -19,6 +19,7 @@ command = """
   ln -s $(realpath $(which make)) $out/libexec/make
   # Create make wrapper script
   cp src/make.bash $out/bin/make
+  sed -i "s%@out@%$out%g" $out/bin/make
   chmod +x $out/bin/make
 """
 runtime-packages = [ "gnumake", "graphviz" ]
