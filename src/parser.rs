@@ -1,11 +1,10 @@
 // src/parser.rs
 #![allow(dead_code)]
-#![allow(unused_imports)]
 use anyhow::{Context, Result};
 use pest_derive::Parser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}};
+use std::{collections::{HashMap, HashSet}, fs::File, io::{BufRead, BufReader}};
 
 #[derive(Parser)]
 #[grammar = "mkdb.pest"]
@@ -16,9 +15,7 @@ pub struct MakeData {
     pub goal: String,
     pub tgt_deps: HashMap<String, Vec<String>>,
     pub var_deps: HashMap<String, Vec<String>>,
-    /// Targets declared in .PHONY stanzas
     pub phony_targets: HashSet<String>,
-    /// Targets declared in .INTERMEDIATE stanzas
     pub intermediate_targets: HashSet<String>,
     #[allow(dead_code)]
     pub values: HashMap<String, (String, usize, String)>,
@@ -35,6 +32,8 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
 
     let mut tgt_deps: HashMap<String, Vec<String>> = HashMap::new();
     let mut var_deps: HashMap<String, Vec<String>> = HashMap::new();
+    let mut phony_targets: HashSet<String> = HashSet::new();
+    let mut intermediate_targets: HashSet<String> = HashSet::new();
     let mut values: HashMap<String, (String, usize, String)> = HashMap::new();
     let mut default_goal = String::new();
     let mut makecmdgoals = String::new();
@@ -57,13 +56,16 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
         if let Some(cap) = target_line_re.captures(&line) {
             let tgt = cap[1].to_string();
             let deps: Vec<String> = cap[2].split_whitespace().map(String::from).collect();
-            // Record special targets or normal dependencies
-            if tgt == ".PHONY" {
-                for d in deps { phony_targets.insert(d); }
-            } else if tgt == ".INTERMEDIATE" {
-                for d in deps { intermediate_targets.insert(d); }
-            } else {
-                tgt_deps.entry(tgt.clone()).or_default().extend(deps);
+            match tgt.as_str() {
+                ".PHONY" => {
+                    for d in deps { phony_targets.insert(d); }
+                }
+                ".INTERMEDIATE" => {
+                    for d in deps { intermediate_targets.insert(d); }
+                }
+                _ => {
+                    tgt_deps.entry(tgt.clone()).or_default().extend(deps);
+                }
             }
             buffer.clear();
             continue;
@@ -93,5 +95,5 @@ pub fn parse_db(path: &str) -> Result<MakeData> {
     } else {
         default_goal
     };
-    Ok(MakeData { goal, tgt_deps, var_deps, values })
+    Ok(MakeData { goal, tgt_deps, var_deps, phony_targets, intermediate_targets, values })
 }

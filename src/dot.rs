@@ -1,5 +1,4 @@
 // src/dot.rs
-
 use crate::parser::MakeData;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Write as FmtWrite;
@@ -15,11 +14,7 @@ pub fn render_targets(
 ) -> String {
     let mut out = String::new();
     writeln!(&mut out, "digraph gnumake {{").unwrap();
-    writeln!(
-        &mut out,
-        "\tnode[shape=rect;style=\"rounded,bold\"]; {{"
-    )
-    .unwrap();
+    writeln!(&mut out, "    node[shape=rect;style=\"rounded,bold\"]; {{").unwrap();
 
     // 1) Build color/style map
     let mut colours = build_colour_map(data);
@@ -31,23 +26,22 @@ pub fn render_targets(
     let mut seen_edges = HashSet::new();
     for (start, ends) in threads {
         for (end, dist_map) in ends {
-            // process lengths longest -> shortest
             for (&dist, thread_list) in dist_map.iter().rev() {
-                // split into "keep" vs "pruneable"
+                // split into keep vs pruneable
                 let mut keep = Vec::new();
                 let mut prune = Vec::new();
                 for th in thread_list {
-                    if contains_endpoint(th, &thread_vertices) {
+                    if contains_endpoint(&th, &thread_vertices) {
                         keep.push(th.clone());
                     } else {
                         prune.push(th.clone());
                     }
                 }
-                // collapse any beyond maxthreads
+                // collapse beyond maxthreads
                 let allowed = maxthreads.saturating_sub(keep.len());
                 if prune.len() > allowed && allowed > 0 {
                     let summary = format!(
-                        "[{} -> {} ({} hops)\\n{},{}...\\n{} items]",
+                        "[{} -> {} ({} hops)\n{},{}...\n{} items]",
                         start,
                         end,
                         dist - 2,
@@ -59,7 +53,6 @@ pub fn render_targets(
                     prune.truncate(allowed - 1);
                     prune.push(vec![start.clone(), summary.clone(), end.clone()]);
                 }
-                // finally emit
                 for th in keep.into_iter().chain(prune.into_iter()) {
                     emit_thread(
                         &mut out,
@@ -73,8 +66,9 @@ pub fn render_targets(
         }
     }
 
-    writeln!(&mut out, "\t}}").unwrap();
-    writeln!(&mut out, "}}").unwrap();
+    writeln!(&mut out, "    }}").unwrap();
+    writeln!(&mut out, "}}
+").unwrap();
     out
 }
 
@@ -82,23 +76,36 @@ pub fn render_targets(
 pub fn render_variables(data: &MakeData) -> String {
     let mut out = String::new();
     writeln!(&mut out, "digraph gnumake {{").unwrap();
-    writeln!(
-        &mut out,
-        "\tnode[shape=rect;style=\"rounded,bold\"]; {{"
-    )
-    .unwrap();
+    writeln!(&mut out, "    node[shape=rect;style=\"rounded,bold\"]; {{").unwrap();
 
     let mut seen = BTreeSet::new();
     print_vars(&mut out, &data.var_deps, &data.goal, &mut seen);
 
-    writeln!(&mut out, "\t}}").unwrap();
-    writeln!(&mut out, "}}").unwrap();
+    writeln!(&mut out, "    }}").unwrap();
+    writeln!(&mut out, "}}
+").unwrap();
     out
 }
 
-//
+/// Write the DOT string to a file
+pub fn write_dot(path: &str, dot: &str) -> std::io::Result<()> {
+    let mut f = File::create(path)?;
+    f.write_all(dot.as_bytes())
+}
+
+/// Invoke `dot -Tpng` to render a PNG
+pub fn render_png(dot_path: &str) -> std::io::Result<()> {
+    let png_path = dot_path.replace(".dot", ".png");
+    Command::new("dot")
+        .arg("-Tpng")
+        .arg(dot_path)
+        .arg("-o")
+        .arg(png_path)
+        .status()?;
+    Ok(())
+}
+
 // Helpers for the targets graph
-//
 
 fn build_colour_map(data: &MakeData) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
@@ -128,7 +135,6 @@ fn build_colour_map(data: &MakeData) -> BTreeMap<String, String> {
     m
 }
 
-/// Returns (all_threads, vertex_reference_counts)
 fn compute_threads(
     graph: &std::collections::HashMap<String, Vec<String>>,
     root: &String,
@@ -146,15 +152,15 @@ fn compute_threads(
         threads: &mut BTreeMap<String, BTreeMap<String, BTreeMap<usize, Vec<Vec<String>>>>>,
         tv: &mut BTreeMap<String, usize>,
     ) {
-        // endpoint = true only for leaves
+        // endpoint = leaf only
         let is_endpoint = graph.get(node).map_or(true, |d| d.is_empty());
-        // push onto path, increment vertex count
+        // advance path & count
         let mut path = stack.clone();
         path.push(node.clone());
         *tv.entry(node.clone()).or_default() += 1;
 
         if is_endpoint {
-            // record a thread
+            // record thread
             let start = path.first().unwrap().clone();
             let end = node.clone();
             let dist = path.len();
@@ -167,7 +173,6 @@ fn compute_threads(
                 .or_default()
                 .push(path);
         } else {
-            // continue DFS down each dependency
             for dep in &graph[node] {
                 dfs(graph, dep, &mut path, threads, tv);
             }
@@ -178,12 +183,8 @@ fn compute_threads(
     (threads, tv)
 }
 
-/// A "thread" contains an endpoint if any of its *inner* vertices are
-/// endpoints (i.e. appear in more than one thread).
-fn contains_endpoint(
-    thread: &[String],
-    tv: &BTreeMap<String, usize>,
-) -> bool {
+/// Returns true if any inner vertex is shared among threads
+fn contains_endpoint(thread: &[String], tv: &BTreeMap<String, usize>) -> bool {
     for v in thread.iter().skip(1).take(thread.len().saturating_sub(2)) {
         if tv.get(v).cloned().unwrap_or(0) > 1 {
             return true;
@@ -192,7 +193,7 @@ fn contains_endpoint(
     false
 }
 
-/// Emit a single thread: print new nodes (with styling) and deduped edges
+/// Emit nodes+deduped edges: prereq -> target orientation
 fn emit_thread(
     out: &mut String,
     thread: &[String],
@@ -200,28 +201,22 @@ fn emit_thread(
     nodraw: &[String],
     seen_edges: &mut HashSet<(String, String)>,
 ) {
-    // print any new node definitions
     for node in thread {
         if nodraw.iter().any(|pat| node.contains(pat)) {
             return;
         }
         if let Some(col) = colours.remove(node) {
-            writeln!(out, "\t\"{}\" [ {} ];", node, col).unwrap();
+            writeln!(out, "	\"{}\" [ {} ];", node, col).unwrap();
         }
     }
-    // print edges prereq -> target, once only
     for win in thread.windows(2) {
         let prereq = win[1].clone();
         let target = win[0].clone();
         if seen_edges.insert((prereq.clone(), target.clone())) {
-            writeln!(out, "\t\"{}\" -> \"{}\";", prereq, target).unwrap();
+            writeln!(out, "	\"{}\" -> \"{}\";", prereq, target).unwrap();
         }
     }
 }
-
-//
-// Helpers for the variables graph
-//
 
 fn print_vars(
     out: &mut String,
@@ -233,29 +228,10 @@ fn print_vars(
         for var in vars {
             let edge = format!("\"{}\" -> \"{}\";", var, target);
             if seen.insert(edge.clone()) {
-                writeln!(out, "\t{}", edge).unwrap();
-                // recurse down this variable
+                writeln!(out, "	{}", edge).unwrap();
                 print_vars(out, var_deps, var, seen);
             }
         }
     }
-}
-
-/// Write DOT string to a file
-pub fn write_dot(path: &str, dot: &str) -> std::io::Result<()> {
-    let mut f = File::create(path)?;
-    f.write_all(dot.as_bytes())
-}
-
-/// Invoke `dot -Tpng` to render a PNG
-pub fn render_png(dot_path: &str) -> std::io::Result<()> {
-    let png_path = dot_path.replace(".dot", ".png");
-    Command::new("dot")
-        .arg("-Tpng")
-        .arg(dot_path)
-        .arg("-o")
-        .arg(png_path)
-        .status()?;
-    Ok(())
 }
 
