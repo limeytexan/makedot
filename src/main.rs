@@ -105,28 +105,38 @@ fn rewrite_file(path: &str, data: &parser::MakeData, rewrites: &[String]) -> Res
 
 /// Perform string substitutions on one line:
 /// 1) replace any env-var values with `$VARNAME`,
-/// 2) then for each Makefile var whose name ends in the requested suffix,
-///    replace its first literal value with `$(VARNAME)`.
+/// 2) replace Makefile-parsed values using a single pass over all vars,
+///    longest values first to avoid substrings stealing from larger matches.
 fn do_rewrites(line: &str, data: &parser::MakeData, rewrites: &[String]) -> String {
     let mut result = line.to_string();
+
+    // 1) Do all environment-variable substitutions first
     for suffix in rewrites {
-        // 1) environment variables
-        if let Ok(val) = env::var(suffix) {
-            result = result.replace(&val, &format!("${}", suffix));
-        }
-        // 2) Makefile-parsed values
-        for (varname, (_file, _lineno, val)) in &data.values {
-            if varname.ends_with(suffix) {
-                if let Some(pos) = result.find(val) {
-                    result = format!(
-                        "{}$({}){}",
-                        &result[..pos],
-                        varname,
-                        &result[pos + val.len()..]
-                    );
-                }
-            }
+        if let Ok(env_val) = env::var(suffix) {
+            result = result.replace(&env_val, &format!("${}", suffix));
         }
     }
+
+    // 2) Build a (value, varname) table for all Makefile vars matching any suffix
+    let mut var_table: Vec<(&String, &String)> = data
+        .values
+        .iter()
+        .filter(|(varname, _)| {
+            rewrites.iter().any(|suf| varname.ends_with(suf))
+        })
+        .map(|(varname, (_file, _lineno, val))| (val, varname))
+        .collect();
+
+    // Sort by descending length of the value, so longer matches happen first
+    var_table.sort_by(|(val_a, _), (val_b, _)| val_b.len().cmp(&val_a.len()));
+
+    // 3) Apply each rewrite to *all* occurrences (longest values first)
+    for (val, varname) in var_table {
+        // `replace` is global - it swaps out every non-overlapping match.
+        let placeholder = format!("$({})", varname);
+        result = result.replace(val, &placeholder);
+    }
+
     result
 }
+
