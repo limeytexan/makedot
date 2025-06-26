@@ -10,6 +10,7 @@ clap = { version = "4.0", features = ["derive"] }
 pest = "2.5"
 pest_derive = "2.5"
 petgraph = "0.7"
+regex = "1.7"
 
 [dev-dependencies]
 assert_cmd = "2.0"

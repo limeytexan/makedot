@@ -8,10 +8,12 @@ pub fn build_target_graph(tgt_deps: &HashMap<String, Vec<String>>) -> Graph<Stri
     let mut graph = Graph::new();
     let mut indices = HashMap::new();
     for (target, deps) in tgt_deps {
-        let ti = *indices.entry(target.clone())
+        let ti = *indices
+            .entry(target.clone())
             .or_insert_with(|| graph.add_node(target.clone()));
         for dep in deps {
-            let di = *indices.entry(dep.clone())
+            let di = *indices
+                .entry(dep.clone())
                 .or_insert_with(|| graph.add_node(dep.clone()));
             graph.add_edge(di, ti, ());
         }
@@ -24,10 +26,12 @@ pub fn build_var_graph(var_deps: &HashMap<String, Vec<String>>) -> Graph<String,
     let mut graph = Graph::new();
     let mut indices = HashMap::new();
     for (tgt, vars) in var_deps {
-        let ti = *indices.entry(tgt.clone())
+        let ti = *indices
+            .entry(tgt.clone())
             .or_insert_with(|| graph.add_node(tgt.clone()));
         for var in vars {
-            let vi = *indices.entry(var.clone())
+            let vi = *indices
+                .entry(var.clone())
                 .or_insert_with(|| graph.add_node(var.clone()));
             graph.add_edge(vi, ti, ());
         }
