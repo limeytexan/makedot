@@ -13,3 +13,4 @@ command = """
   mkdir -p $out/bin
   cp target/release/makedot-rs $out/bin
 """
+runtime-packages = [ "graphviz" ]

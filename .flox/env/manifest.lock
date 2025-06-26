@@ -20,6 +20,9 @@
     "build": {
       "makedot-rs": {
         "command": "  cargo build --release\n  mkdir -p $out/bin\n  cp target/release/makedot-rs $out/bin\n",
+        "runtime-packages": [
+          "graphviz"
+        ],
         "sandbox": "off"
       }
     }
