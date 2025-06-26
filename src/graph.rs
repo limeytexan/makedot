@@ -1,4 +1,5 @@
 // src/graph.rs
+#![allow(dead_code)]
 use petgraph::Graph;
 use petgraph::Directed;
 use std::collections::HashMap;
