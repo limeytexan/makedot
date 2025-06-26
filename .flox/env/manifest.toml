@@ -2,13 +2,15 @@ version = 1
 
 [install]
 cargo.pkg-path = "cargo"
-rustc.pkg-path = "rustc"
 clang.pkg-path = "clang"
+dasel.pkg-path = "dasel"
 gnumake.pkg-path = "gnumake"
 graphviz.pkg-path = "graphviz"
+rustc.pkg-path = "rustc"
 
 [build.makedot]
 sandbox = "off"
+version.command = "dasel -f Cargo.toml package.version | tr -d \"'\""
 command = """
   cargo build --release
   mkdir -p $out/bin $out/libexec
