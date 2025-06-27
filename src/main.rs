@@ -29,6 +29,9 @@ struct Args {
     nodraw: Vec<String>,
     #[arg(long)]
     png: bool,
+    /// Emit a Mermaid diagram (instead of DOT) for the targets graph
+    #[arg(long, conflicts_with = "variables")]
+    mmd: bool,
     #[arg(long)]
     debug: bool,
     #[arg(value_name = "GNUMAKE_DB")]
@@ -53,18 +56,35 @@ fn main() -> Result<()> {
                 args.maxthreads, args.nodraw
             );
         }
-        let dot_targets = dot::render_targets(&data, args.maxthreads, &args.nodraw);
-        if args.debug {
-            println!("--- TARGET GRAPH DOT ---\n{}", dot_targets);
-        }
-        let tgt_path = format!("{}.targets.dot", data.goal);
-        dot::write_dot(&tgt_path, &dot_targets)?;
-        // Perform rewrites on the targets.dot file if requested
-        if !args.rewrite.is_empty() {
-            rewrite_file(&tgt_path, &data, &args.rewrite)?;
-        }
-        if args.png {
-            dot::render_png(&tgt_path)?;
+        if args.mmd {
+            // Mermaid output path
+            if args.debug {
+                eprintln!(
+                    "DEBUG: rendering targets graph as Mermaid (maxthreads={}, nodraw={:?})",
+                    args.maxthreads, args.nodraw
+                );
+            }
+            let mermaid = dot::render_mermaid_targets(&data, args.maxthreads, &args.nodraw);
+            if args.debug {
+                println!("--- TARGET GRAPH MERMAID ---\n{}", mermaid);
+            }
+            let mmd_path = format!("{}.targets.mmd", data.goal);
+            fs::write(&mmd_path, mermaid)?;
+        } else {
+            // Graphviz DOT + optional PNG
+            let dot_targets = dot::render_targets(&data, args.maxthreads, &args.nodraw);
+            if args.debug {
+                println!("--- TARGET GRAPH DOT ---\n{}", dot_targets);
+            }
+            let tgt_path = format!("{}.targets.dot", data.goal);
+            dot::write_dot(&tgt_path, &dot_targets)?;
+            // Perform rewrites on the targets.dot file if requested
+            if !args.rewrite.is_empty() {
+                rewrite_file(&tgt_path, &data, &args.rewrite)?;
+            }
+            if args.png {
+                dot::render_png(&tgt_path)?;
+            }
         }
     }
 

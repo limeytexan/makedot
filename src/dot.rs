@@ -237,3 +237,55 @@ fn print_vars(
         }
     }
 }
+
+/// Sanitize a node name into a Mermaid-safe identifier (alphanumeric + `_`).
+fn sanitize_id(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
+/// Render a Mermaid (flowchart LR) diagram of the targets graph.
+pub fn render_mermaid_targets(
+    data: &MakeData,
+    _maxthreads: usize,
+    nodraw: &[String],
+) -> String {
+    let mut out = String::new();
+    out.push_str("```mermaid\nflowchart LR\n");
+
+    // For each dependency edge: prereq --> target
+    for (tgt, deps) in &data.tgt_deps {
+        for dep in deps {
+            if nodraw.iter().any(|pat| dep.contains(pat) || tgt.contains(pat)) {
+                continue;
+            }
+            let from = sanitize_id(dep);
+            let to = sanitize_id(tgt);
+            writeln!(out, "    {} --> {};", from, to).unwrap();
+        }
+    }
+
+    // Highlight the final goal node
+    let goal_id = sanitize_id(&data.goal);
+    if data.phony_targets.contains(&data.goal) {
+        // match the Perl style for phony: filled node
+        writeln!(
+            out,
+            "    style {} fill:#f96,stroke:#333,stroke-width:2px;",
+            goal_id
+        )
+        .unwrap();
+    } else {
+        // non-phony: red border only
+        writeln!(
+            out,
+            "    style {} stroke:#f00,stroke-width:2px;",
+            goal_id
+        )
+        .unwrap();
+    }
+
+    out.push_str("```");
+    out
+}
