@@ -8,7 +8,7 @@ out=@out@
 
 _MAKEDB="$(mktemp)"
 $out/libexec/make --just-print --print-data-base "$@" > "$_MAKEDB"
-$out/libexec/makedot --targets --variables --png \
+$out/libexec/makedot --targets --png \
   --rewrite _out \
   --rewrite TMPDIR \
   --rewrite FLOX_ENV \

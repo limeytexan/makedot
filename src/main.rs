@@ -117,14 +117,7 @@ fn rewrite_file(path: &str, data: &parser::MakeData, rewrites: &[String]) -> Res
 fn do_rewrites(line: &str, data: &parser::MakeData, rewrites: &[String]) -> String {
     let mut result = line.to_string();
 
-    // 1) Do all environment-variable substitutions first
-    for suffix in rewrites {
-        if let Ok(env_val) = env::var(suffix) {
-            result = result.replace(&env_val, &format!("${}", suffix));
-        }
-    }
-
-    // 2) Build a (value, varname) table for all Makefile vars matching any suffix
+    // 1) Build a (value, varname) table for all Makefile vars matching any suffix
     let mut var_table: Vec<(&String, &String)> = data
         .values
         .iter()
@@ -135,11 +128,18 @@ fn do_rewrites(line: &str, data: &parser::MakeData, rewrites: &[String]) -> Stri
     // Sort by descending length of the value, so longer matches happen first
     var_table.sort_by(|(val_a, _), (val_b, _)| val_b.len().cmp(&val_a.len()));
 
-    // 3) Apply each rewrite to *all* occurrences (longest values first)
+    // 2) Apply each rewrite to *all* occurrences (longest values first)
     for (val, varname) in var_table {
         // `replace` is global - it swaps out every non-overlapping match.
         let placeholder = format!("$({})", varname);
         result = result.replace(val, &placeholder);
+    }
+
+    // 3) Do all exact environment-variable substitutions last
+    for var in rewrites {
+        if let Ok(env_val) = env::var(var) {
+            result = result.replace(&env_val, &format!("${}", var));
+        }
     }
 
     result
