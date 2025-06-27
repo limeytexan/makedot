@@ -254,20 +254,24 @@ pub fn render_mermaid_targets(
     let mut out = String::new();
     out.push_str("```mermaid\nflowchart LR\n");
 
-    // For each dependency edge: prereq --> target
+    // Deduplicate edges: insert returns true only for the first time we see (from,to)
+    let mut seen = HashSet::new();
     for (tgt, deps) in &data.tgt_deps {
         for dep in deps {
             if nodraw.iter().any(|pat| dep.contains(pat) || tgt.contains(pat)) {
                 continue;
             }
             let from = sanitize_id(dep);
-            let to = sanitize_id(tgt);
-            writeln!(out, "    {} --> {};", from, to).unwrap();
+            let to   = sanitize_id(tgt);
+            if seen.insert((from.clone(), to.clone())) {
+                writeln!(out, "    {} --> {};", from, to).unwrap();
+            }
         }
     }
 
     // Highlight the final goal node
     let goal_id = sanitize_id(&data.goal);
+
     if data.phony_targets.contains(&data.goal) {
         // match the Perl style for phony: filled node
         writeln!(
