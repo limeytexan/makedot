@@ -6,6 +6,11 @@ use std::fs::File;
 use std::io::Write;
 use std::process::Command;
 
+/// Sanitize a node name into a Mermaid-safe identifier (alphanumeric + `_`).
+fn sanitize_id(s: &str) -> String {
+    s.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect()
+}
+
 /// Render the "targets" graph.
 pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> String {
     let mut out = String::new();
@@ -78,8 +83,7 @@ pub fn render_variables(data: &MakeData) -> String {
     writeln!(&mut out, "    }}").unwrap();
     writeln!(
         &mut out,
-        "}}
-"
+        "}}\n"
     )
     .unwrap();
     out
@@ -209,14 +213,14 @@ fn emit_thread(
             return;
         }
         if let Some(col) = colours.remove(node) {
-            writeln!(out, "	\"{}\" [ {} ];", node, col).unwrap();
+            writeln!(out, "\t\"{}\" [ {} ];", node, col).unwrap();
         }
     }
     for win in thread.windows(2) {
         let prereq = win[1].clone();
         let target = win[0].clone();
         if seen_edges.insert((prereq.clone(), target.clone())) {
-            writeln!(out, "	\"{}\" -> \"{}\";", prereq, target).unwrap();
+            writeln!(out, "\t\"{}\" -> \"{}\";", prereq, target).unwrap();
         }
     }
 }
@@ -231,65 +235,52 @@ fn print_vars(
         for var in vars {
             let edge = format!("\"{}\" -> \"{}\";", var, target);
             if seen.insert(edge.clone()) {
-                writeln!(out, "	{}", edge).unwrap();
+                writeln!(out, "\t{}", edge).unwrap();
                 print_vars(out, var_deps, var, seen);
             }
         }
     }
 }
 
-/// Sanitize a node name into a Mermaid-safe identifier (alphanumeric + `_`).
-fn sanitize_id(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect()
-}
-
-/// Render a Mermaid (flowchart LR) diagram of the targets graph.
+/// Translate your DOT-rendered graph into a Mermaid flowchart.
 pub fn render_mermaid_targets(
     data: &MakeData,
-    _maxthreads: usize,
+    maxthreads: usize,
     nodraw: &[String],
 ) -> String {
+    // 1) First generate the canonical DOT output (pruned, threaded, deduped).
+    let dot = render_targets(data, maxthreads, nodraw);
+    // 2) Now translate that line-for-line into Mermaid.
     let mut out = String::new();
-    out.push_str("```mermaid\nflowchart LR\n");
+    out.push_str("```mermaid\nflowchart TD\n");
 
-    // Deduplicate edges: insert returns true only for the first time we see (from,to)
     let mut seen = HashSet::new();
-    for (tgt, deps) in &data.tgt_deps {
-        for dep in deps {
-            if nodraw.iter().any(|pat| dep.contains(pat) || tgt.contains(pat)) {
-                continue;
+    for line in dot.lines() {
+        let t = line.trim();
+        // skip graph headers/footers
+        if t.starts_with("digraph") || t.starts_with("node[") || t == "{" || t == "}" {
+            continue;
+        }
+        // edge lines:    "A" -> "B";
+        if t.starts_with('"') && t.contains("->") {
+            let parts: Vec<&str> = t.split_whitespace().collect();
+            if parts.len() >= 3 && parts[1] == "->" {
+                let from = parts[0].trim_matches('"');
+                let to = parts[2].trim_end_matches(';').trim_matches('"');
+                let fid = sanitize_id(from);
+                let tid = sanitize_id(to);
+                if seen.insert((fid.clone(), tid.clone())) {
+                    writeln!(out, "    {} --> {};", fid, tid).unwrap();
+                }
             }
-            let from = sanitize_id(dep);
-            let to   = sanitize_id(tgt);
-            if seen.insert((from.clone(), to.clone())) {
-                writeln!(out, "    {} --> {};", from, to).unwrap();
-            }
+            continue;
+        }
+        // node styling lines:    "A" [ color=red,… ];
+        if t.starts_with('"') && t.contains('[') {
+            // we could translate style attrs, but to keep line-count minimal we'll omit these
+            continue;
         }
     }
-
-    // Highlight the final goal node
-    let goal_id = sanitize_id(&data.goal);
-
-    if data.phony_targets.contains(&data.goal) {
-        // match the Perl style for phony: filled node
-        writeln!(
-            out,
-            "    style {} fill:#f96,stroke:#333,stroke-width:2px;",
-            goal_id
-        )
-        .unwrap();
-    } else {
-        // non-phony: red border only
-        writeln!(
-            out,
-            "    style {} stroke:#f00,stroke-width:2px;",
-            goal_id
-        )
-        .unwrap();
-    }
-
     out.push_str("```");
     out
 }
