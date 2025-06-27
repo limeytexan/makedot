@@ -1,73 +1,161 @@
 // src/dot.rs
 use crate::parser::MakeData;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::Write;
 use std::process::Command;
 
-/// Sanitize a node name into a Mermaid-safe identifier (alphanumeric + `_`).
-fn sanitize_id(s: &str) -> String {
-    s.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect()
+/// A node in the build graph, with arbitrary styling attributes.
+pub struct RenderNode {
+    pub id:    String,
+    /// attributes like ("color","red") or ("style","filled")
+    pub attrs: Vec<(String,String)>,
 }
 
-/// Render the "targets" graph.
-pub fn render_targets(data: &MakeData, maxthreads: usize, nodraw: &[String]) -> String {
-    let mut out = String::new();
-    writeln!(&mut out, "digraph gnumake {{").unwrap();
-    writeln!(&mut out, "    node[shape=rect;style=\"rounded,bold\"]; {{").unwrap();
+/// A directed edge in the build graph, with arbitrary styling attributes.
+pub struct RenderEdge {
+    pub from:  String,
+    pub to:    String,
+    /// attributes like ("style","dotted"), ("color","blue")
+    pub attrs: Vec<(String,String)>,
+}
 
-    // 1) Build color/style map
-    let mut colours = build_colour_map(data);
+/// Build a renderer-agnostic graph: a list of nodes and edges with rich attributes.
+pub fn build_graph(
+    data: &MakeData,
+    _maxthreads: usize,
+    nodraw: &[String],
+) -> (Vec<RenderNode>, Vec<RenderEdge>) {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
 
-    // 2) Compute all threads & vertex counts
-    let (threads, thread_vertices) = compute_threads(&data.tgt_deps, &data.goal);
-
-    // 3) Emit each thread, pruning & deduplicating
-    let mut seen_edges = HashSet::new();
-    for (start, ends) in threads {
-        for (end, dist_map) in ends {
-            for (&dist, thread_list) in dist_map.iter().rev() {
-                // split into keep vs pruneable
-                let mut keep = Vec::new();
-                let mut prune = Vec::new();
-                for th in thread_list {
-                    if contains_endpoint(&th, &thread_vertices) {
-                        keep.push(th.clone());
-                    } else {
-                        prune.push(th.clone());
-                    }
-                }
-                // collapse beyond maxthreads
-                let allowed = maxthreads.saturating_sub(keep.len());
-                if prune.len() > allowed && allowed > 0 {
-                    let summary = format!(
-                        "[{} -> {} ({} hops)\n{},{}...\n{} items]",
-                        start,
-                        end,
-                        dist - 2,
-                        prune[allowed - 1][1],
-                        prune[allowed][1],
-                        prune.len() - allowed + 1
-                    );
-                    colours.insert(summary.clone(), "color=blue".into());
-                    prune.truncate(allowed - 1);
-                    prune.push(vec![start.clone(), summary.clone(), end.clone()]);
-                }
-                for th in keep.into_iter().chain(prune.into_iter()) {
-                    emit_thread(&mut out, &th, &mut colours, nodraw, &mut seen_edges);
-                }
+    // 1) Collect all nodes (targets) and assign per-node attrs
+    for tgt in data.tgt_deps.keys() {
+        if nodraw.iter().any(|pat| tgt.contains(pat)) {
+            continue;
+        }
+        let mut attrs = Vec::new();
+        // color map, phony fill, goal highlight, etc.
+        if tgt == &data.goal {
+            attrs.push(("color".into(), "red".into()));
+            if data.phony_targets.contains(&data.goal) {
+                attrs.push(("style".into(), "rounded,filled".into()));
+            } else {
+                attrs.push(("style".into(), "bold".into()));
             }
+        } else if data.phony_targets.contains(tgt) {
+            attrs.push(("style".into(), "dashed".into()));
+        }
+        nodes.push(RenderNode { id: tgt.clone(), attrs });
+    }
+
+    // 2) Collect edges with per-edge attrs (threading, dotted, etc.)
+    for (tgt, deps) in &data.tgt_deps {
+        for dep in deps {
+            if nodraw.iter().any(|pat| dep.contains(pat) || tgt.contains(pat)) {
+                continue;
+            }
+            // no thread-count styling (data.threads no longer exists)
+            let attrs = Vec::new();
+            edges.push(RenderEdge {
+                from: dep.clone(),
+                to:   tgt.clone(),
+                attrs,
+            });
         }
     }
 
-    writeln!(&mut out, "    }}").unwrap();
-    writeln!(
-        &mut out,
-        "}}
-"
-    )
-    .unwrap();
+    (nodes, edges)
+}
+
+/// Render a Graphviz DOT graph from our generic nodes & edges.
+pub fn render_dot(
+    nodes: &[RenderNode],
+    edges: &[RenderEdge],
+) -> String {
+    let mut out = String::new();
+    out.push_str("digraph G {\n");
+    // emit each node
+    for node in nodes {
+        let mut attr_str = String::new();
+        for (k,v) in &node.attrs {
+            write!(&mut attr_str, "{}={},", k, v).unwrap();
+        }
+        writeln!(out, "    \"{}\" [{}];", node.id, attr_str.trim_end_matches(',')).unwrap();
+    }
+    // emit each edge
+    for edge in edges {
+        let mut attr_str = String::new();
+        for (k,v) in &edge.attrs {
+            write!(&mut attr_str, "{}={},", k, v).unwrap();
+        }
+        writeln!(
+            out,
+            "    \"{}\" -> \"{}\" [{}];",
+            edge.from,
+            edge.to,
+            attr_str.trim_end_matches(',')
+        )
+        .unwrap();
+    }
+    out.push_str("}\n");
+    out
+}
+
+/// Render a Mermaid flowchart from our generic nodes & edges.
+pub fn render_mmd(
+    nodes: &[RenderNode],
+    edges: &[RenderEdge],
+) -> String {
+    // helper to sanitize IDs
+    fn sanitize(s: &str) -> String {
+        s.chars()
+         .map(|c| if c.is_alphanumeric() { c } else { '_' })
+         .collect()
+    }
+
+    let mut out = String::new();
+    out.push_str("```mermaid\nflowchart LR\n");
+    // Emit edges
+    let mut seen = HashSet::new();
+    for edge in edges {
+        let f = sanitize(&edge.from);
+        let t = sanitize(&edge.to);
+        if seen.insert((f.clone(), t.clone())) {
+            // gather any Mermaid attrs (e.g. dotted)
+            let mut arrow = "-->";
+            for (k,v) in &edge.attrs {
+                if k == "style" && v == "dotted" {
+                    arrow = "-.->";
+                }
+            }
+            writeln!(out, "    {} {} {};", f, arrow, t).unwrap();
+        }
+    }
+    // Emit node styles (Mermaid only supports `style id fill:…,...`)
+    for node in nodes {
+        let id = sanitize(&node.id);
+        let mut fills = Vec::new();
+        let mut border = None;
+        for (k,v) in &node.attrs {
+            if k == "style" && v.contains("filled") {
+                // assume first attr is fill color if present
+                fills.push("lightgrey".to_string());
+            }
+            if k == "color" {
+                border = Some(v.clone());
+            }
+        }
+        if !fills.is_empty() || border.is_some() {
+            let mut params = Vec::new();
+            if let Some(col) = border { params.push(format!("stroke:{}", col)); }
+            if !fills.is_empty() { params.push(format!("fill:{}", fills[0])); }
+            // unwrap to avoid `?` in a function returning String
+            writeln!(out, "    style {} {};", id, params.join(",")).unwrap();
+        }
+    }
+    out.push_str("```");
     out
 }
 
@@ -107,124 +195,6 @@ pub fn render_png(dot_path: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-// Helpers for the targets graph
-
-fn build_colour_map(data: &MakeData) -> BTreeMap<String, String> {
-    let mut m = BTreeMap::new();
-    // goal always red, but filling based on whether it's phony
-    let goal_style = if data.phony_targets.contains(&data.goal) {
-        "color=red,style=\"rounded,filled\""
-    } else {
-        "color=red"
-    };
-    m.insert(data.goal.clone(), goal_style.into());
-
-    for tgt in data.tgt_deps.keys() {
-        if m.contains_key(tgt) {
-            continue;
-        }
-        let style = if data.phony_targets.contains(tgt) {
-            // phony: filled
-            "color=green,style=\"rounded,filled\""
-        } else if data.intermediate_targets.contains(tgt) {
-            // intermediate: dashed
-            "color=orange,style=dashed"
-        } else if data.tgt_deps.get(tgt).map_or(true, |v| v.is_empty()) {
-            // leaf: green
-            "color=green"
-        } else {
-            // internal: orange
-            "color=orange"
-        };
-        m.insert(tgt.clone(), style.into());
-    }
-
-    m
-}
-
-fn compute_threads(
-    graph: &std::collections::HashMap<String, Vec<String>>,
-    root: &String,
-) -> (
-    BTreeMap<String, BTreeMap<String, BTreeMap<usize, Vec<Vec<String>>>>>,
-    BTreeMap<String, usize>,
-) {
-    let mut threads = BTreeMap::new();
-    let mut tv = BTreeMap::new();
-
-    fn dfs(
-        graph: &std::collections::HashMap<String, Vec<String>>,
-        node: &String,
-        stack: &mut Vec<String>,
-        threads: &mut BTreeMap<String, BTreeMap<String, BTreeMap<usize, Vec<Vec<String>>>>>,
-        tv: &mut BTreeMap<String, usize>,
-    ) {
-        // endpoint = leaf only
-        let is_endpoint = graph.get(node).map_or(true, |d| d.is_empty());
-        // advance path & count
-        let mut path = stack.clone();
-        path.push(node.clone());
-        *tv.entry(node.clone()).or_default() += 1;
-
-        if is_endpoint {
-            // record thread
-            let start = path.first().unwrap().clone();
-            let end = node.clone();
-            let dist = path.len();
-            threads
-                .entry(start.clone())
-                .or_default()
-                .entry(end.clone())
-                .or_default()
-                .entry(dist)
-                .or_default()
-                .push(path);
-        } else {
-            for dep in &graph[node] {
-                dfs(graph, dep, &mut path, threads, tv);
-            }
-        }
-    }
-
-    dfs(graph, root, &mut Vec::new(), &mut threads, &mut tv);
-    (threads, tv)
-}
-
-/// Returns true if any inner vertex is shared among threads
-fn contains_endpoint(thread: &[String], tv: &BTreeMap<String, usize>) -> bool {
-    for v in thread.iter().skip(1).take(thread.len().saturating_sub(2)) {
-        if tv.get(v).cloned().unwrap_or(0) > 1 {
-            return true;
-        }
-    }
-    false
-}
-
-/// Emit nodes+deduped edges: prereq -> target orientation
-fn emit_thread(
-    out: &mut String,
-    thread: &[String],
-    colours: &mut BTreeMap<String, String>,
-    nodraw: &[String],
-    seen_edges: &mut HashSet<(String, String)>,
-) {
-    for node in thread {
-        if nodraw.iter().any(|pat| node.contains(pat)) {
-            return;
-        }
-        if let Some(col) = colours.remove(node) {
-            writeln!(out, "\t\"{}\" [ {} ];", node, col).unwrap();
-        }
-    }
-    for win in thread.windows(2) {
-        let prereq = win[1].clone();
-        let target = win[0].clone();
-        if seen_edges.insert((prereq.clone(), target.clone())) {
-            writeln!(out, "\t\"{}\" -> \"{}\";", prereq, target).unwrap();
-        }
-    }
-}
-
 fn print_vars(
     out: &mut String,
     var_deps: &std::collections::HashMap<String, Vec<String>>,
@@ -242,45 +212,3 @@ fn print_vars(
     }
 }
 
-/// Translate your DOT-rendered graph into a Mermaid flowchart.
-pub fn render_mermaid_targets(
-    data: &MakeData,
-    maxthreads: usize,
-    nodraw: &[String],
-) -> String {
-    // 1) First generate the canonical DOT output (pruned, threaded, deduped).
-    let dot = render_targets(data, maxthreads, nodraw);
-    // 2) Now translate that line-for-line into Mermaid.
-    let mut out = String::new();
-    out.push_str("```mermaid\nflowchart TD\n");
-
-    let mut seen = HashSet::new();
-    for line in dot.lines() {
-        let t = line.trim();
-        // skip graph headers/footers
-        if t.starts_with("digraph") || t.starts_with("node[") || t == "{" || t == "}" {
-            continue;
-        }
-        // edge lines:    "A" -> "B";
-        if t.starts_with('"') && t.contains("->") {
-            let parts: Vec<&str> = t.split_whitespace().collect();
-            if parts.len() >= 3 && parts[1] == "->" {
-                let from = parts[0].trim_matches('"');
-                let to = parts[2].trim_end_matches(';').trim_matches('"');
-                let fid = sanitize_id(from);
-                let tid = sanitize_id(to);
-                if seen.insert((fid.clone(), tid.clone())) {
-                    writeln!(out, "    {} --> {};", fid, tid).unwrap();
-                }
-            }
-            continue;
-        }
-        // node styling lines:    "A" [ color=red,… ];
-        if t.starts_with('"') && t.contains('[') {
-            // we could translate style attrs, but to keep line-count minimal we'll omit these
-            continue;
-        }
-    }
-    out.push_str("```");
-    out
-}

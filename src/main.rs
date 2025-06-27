@@ -56,6 +56,8 @@ fn main() -> Result<()> {
                 args.maxthreads, args.nodraw
             );
         }
+        let (nodes, edges) = dot::build_graph(&data, args.maxthreads, &args.nodraw);
+
         if args.mmd {
             // Mermaid output path
             if args.debug {
@@ -64,26 +66,14 @@ fn main() -> Result<()> {
                     args.maxthreads, args.nodraw
                 );
             }
-            let mermaid = dot::render_mermaid_targets(&data, args.maxthreads, &args.nodraw);
-            if args.debug {
-                println!("--- TARGET GRAPH MERMAID ---\n{}", mermaid);
-            }
-            let mmd_path = format!("{}.targets.mmd", data.goal);
-            fs::write(&mmd_path, mermaid)?;
+            let mmd = dot::render_mmd(&nodes, &edges);
+            fs::write(format!("{}.targets.mmd", data.goal), mmd)?;
         } else {
             // Graphviz DOT + optional PNG
-            let dot_targets = dot::render_targets(&data, args.maxthreads, &args.nodraw);
-            if args.debug {
-                println!("--- TARGET GRAPH DOT ---\n{}", dot_targets);
-            }
-            let tgt_path = format!("{}.targets.dot", data.goal);
-            dot::write_dot(&tgt_path, &dot_targets)?;
-            // Perform rewrites on the targets.dot file if requested
-            if !args.rewrite.is_empty() {
-                rewrite_file(&tgt_path, &data, &args.rewrite)?;
-            }
+            let dot = dot::render_dot(&nodes, &edges);
+            fs::write(format!("{}.targets.dot", data.goal), dot)?;
             if args.png {
-                dot::render_png(&tgt_path)?;
+                dot::render_png(&format!("{}.targets.dot", data.goal))?;
             }
         }
     }
